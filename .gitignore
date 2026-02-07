@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+node_modules
+.DS_Store
+.env
+.env.local
+dist
+.next
+target
+**/.anchor
