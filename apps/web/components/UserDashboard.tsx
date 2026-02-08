@@ -211,7 +211,7 @@ export default function UserDashboard({ refreshNonce }: { refreshNonce: number }
   if (!userPk) return null;
 
   return (
-    <div style={{ border: "1px solid #333", borderRadius: 14, padding: 16, marginTop: 16 }}>
+    <div style={{ border: "1px solid #333", borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 600 }}>Your CavityProof Account</div>
@@ -245,6 +245,21 @@ export default function UserDashboard({ refreshNonce }: { refreshNonce: number }
             </div>
           ) : (
             <>
+              <div style={{ marginTop: 12, marginBottom: 4, fontSize: 13, opacity: 0.8 }}>Streak</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      border: "1px solid #333",
+                      background: i < vm.streak ? "#f97316" : "transparent",
+                    }}
+                  />
+                ))}
+              </div>
               {vm.owner && (
                 <div style={{ marginTop: 10, fontSize: 13, opacity: 0.8 }}>
                   Owner: <span style={{ fontFamily: "monospace" }}>{shortPk(vm.owner)}</span>

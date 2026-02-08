@@ -12,6 +12,7 @@ import {
 } from "@solana/web3.js";
 
 import UserDashboard from "../components/UserDashboard";
+import logo from "./image.png";
 
 const WalletButton = dynamic(() => import("../components/WalletButton"), { ssr: false });
 
@@ -53,6 +54,29 @@ async function sha256Bytes(data: string) {
   const enc = new TextEncoder().encode(data);
   const hash = await crypto.subtle.digest("SHA-256", enc);
   return new Uint8Array(hash); // 32 bytes
+}
+
+// Create canonical JSON string (stable keys, stable formatting)
+function canonicalizeJSON(obj: any): string {
+  // Sort keys recursively
+  function sortKeys(o: any): any {
+    if (o === null || typeof o !== "object") {
+      return o;
+    }
+    if (Array.isArray(o)) {
+      return o.map(item => sortKeys(item));
+    }
+    const sorted: any = {};
+    const keys = Object.keys(o).sort();
+    for (const key of keys) {
+      const value = o[key];
+      sorted[key] = typeof value === "object" && value !== null
+        ? sortKeys(value)
+        : value;
+    }
+    return sorted;
+  }
+  return JSON.stringify(sortKeys(obj)); // Compact format, no spaces, stable ordering
 }
 
 
@@ -159,6 +183,8 @@ export default function Home() {
   const [receipt, setReceipt] = useState<any>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [sessionHash, setSessionHash] = useState<string>("");
+  const [proofWithWallet, setProofWithWallet] = useState<any>(null);
 
   // Dashboard refresh trigger (still useful if you want manual bump)
   const [dashboardRefreshNonce, setDashboardRefreshNonce] = useState(0);
@@ -208,6 +234,36 @@ export default function Home() {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Compute sessionHash when proof is ready
+  useEffect(() => {
+    async function computeHash() {
+      if (cv?.proof && wallet.publicKey) {
+        // Add wallet to proof object
+        const proof = {
+          ...cv.proof,
+          wallet: wallet.publicKey.toBase58(),
+        };
+        setProofWithWallet(proof);
+        
+        // Create canonical JSON string
+        const canonicalJson = canonicalizeJSON(proof);
+        
+        // SHA-256 hash
+        const hashBytes = await sha256Bytes(canonicalJson);
+        const hashHex = bytesToHex(hashBytes);
+        setSessionHash(hashHex);
+        
+        // Log to console
+        console.log("proof", JSON.stringify(proof, null, 2));
+        console.log("sessionHash", hashHex);
+      } else {
+        setProofWithWallet(null);
+        setSessionHash("");
+      }
+    }
+    computeHash();
+  }, [cv?.proof, wallet.publicKey]);
   
 
   // Live program logs (wow factor)
@@ -247,13 +303,20 @@ export default function Home() {
     const dayNum = Math.floor(now / 86400);
     const expiresAt = now + 120;
 
-    if (!cv?.proof) {
+    if (!cv?.proof || !wallet.publicKey) {
       setError("Run the brush detector until proof is ready (20s) before claiming.");
       return;
     }
     
-    // Derive sessionHash from the proof (stable + binds claim to CV result)
-    const sessionHash = await sha256Bytes(JSON.stringify(cv.proof)); // 32 bytes
+    // Create proof with wallet
+    const proof = {
+      ...cv.proof,
+      wallet: wallet.publicKey.toBase58(),
+    };
+    
+    // Derive sessionHash from canonical JSON (stable + binds claim to CV result)
+    const canonicalJson = canonicalizeJSON(proof);
+    const sessionHash = await sha256Bytes(canonicalJson); // 32 bytes
     
     const nonce = randBytes(16);
 
@@ -436,27 +499,58 @@ export default function Home() {
   }
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700 }}>CavityProof</h1>
-      <p style={{ marginTop: 8, opacity: 0.8 }}>
+    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui", color: "#0a0a0a" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+        <img src={logo.src} alt="CavityProof" style={{ width: 80, height: 80, borderRadius: 12 }} />
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0a0a0a" }}>CavityProof</h1>
+      </div>
+      <p style={{ marginTop: 8, opacity: 0.9, textAlign: "center" }}>
         Phase 4: Oracle-enforced claim (ed25519 verify + nonce replay protection)
       </p>
 
-          <div style={{ padding: 20 }}>
-      <div>Stream:</div>
-      <img
-        src="http://127.0.0.1:5001/api/stream"
-        alt="stream"
-        style={{ width: 640 }}
-      />
-    </div>
+      <div style={{ maxWidth: "1400px", margin: "16px auto 0", border: "1px solid #333", borderRadius: 14, padding: 12 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+          <WalletButton />
+          <button
+            onClick={() => claimOnChain(false)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              cursor: "pointer",
+            }}
+          >
+            Claim on-chain (streak)
+          </button>
+          <button
+            onClick={() => claimOnChain(true)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              cursor: "pointer",
+            }}
+          >
+            DEV Claim (unlimited)
+          </button>
+        </div>
+        {status && <pre style={{ marginTop: 12, textAlign: "center" }}>{status}</pre>}
+        {error && <pre style={{ marginTop: 12, color: "crimson", textAlign: "center" }}>{error}</pre>}
+      </div>
 
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", marginTop: 16, justifyContent: "center", maxWidth: "1400px", margin: "16px auto 0" }}>
+        <div style={{ border: "1px solid #333", borderRadius: 14, padding: 12, flex: "1 1 0", minWidth: 0 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, color: "#0a0a0a" }}>Video Stream</div>
+          <img
+            src="http://127.0.0.1:5001/api/stream"
+            alt="stream"
+            style={{ width: "100%", borderRadius: 8 }}
+          />
+        </div>
 
-
-
-            {/* ✅ CV Detector panel */}
-      <div style={{ marginTop: 16, border: "1px solid #333", borderRadius: 14, padding: 12 }}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Toothbrush Detector</div>
+        {/* ✅ CV Detector panel */}
+        <div style={{ border: "1px solid #333", borderRadius: 14, padding: 12, flex: "1 1 0", minWidth: 0 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8, color: "#0a0a0a" }}>Toothbrush Detector</div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
           <button
@@ -485,7 +579,7 @@ export default function Home() {
                   {cv.toothbrush_visible ? "Detected ✅" : "Not detected ❌"}
                 </b>
               </div>
-              <div style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.85 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.95 }}>
                 conf: {cv.confidence.toFixed(2)} | grace: {cv.grace_sec}s
               </div>
             </div>
@@ -499,83 +593,69 @@ export default function Home() {
               </div>
             </div>
 
-            {cv.proof ? (
-              <div style={{ marginTop: 10, color: "limegreen", fontWeight: 600 }}>
-                Proof ready ✅ You can claim now.
-              </div>
+            {cv.proof && cv.running ? (
+              <>
+                <div style={{ marginTop: 10, color: "limegreen", fontWeight: 600 }}>
+                  Proof ready ✅ You can claim now.
+                </div>
+                {proofWithWallet && sessionHash && wallet.publicKey ? (
+                  <div style={{ marginTop: 16, border: "1px solid #444", borderRadius: 10, padding: 12, background: "#111" }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, color: "#0f0", whiteSpace: "pre-wrap", marginBottom: 12 }}>
+                      {JSON.stringify(proofWithWallet, null, 2)}
+                    </div>
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #333" }}>
+                      <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>sessionHash</div>
+                      <div style={{ fontFamily: "monospace", fontSize: 12, color: "#0ff", wordBreak: "break-all" }}>
+                        {sessionHash}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : (
-              <div style={{ marginTop: 10, opacity: 0.8 }}>
-                Hold toothbrush in view until progress reaches 100%.
+              <div style={{ marginTop: 10, opacity: 0.9 }}>
+                {cv?.running ? "Hold toothbrush in view until progress reaches 100%." : "Start the detector to begin."}
               </div>
             )}
           </>
         ) : (
-          <div style={{ opacity: 0.7 }}>Loading detector status…</div>
+          <div style={{ opacity: 0.9 }}>Loading detector status…</div>
         )}
+        </div>
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <WalletButton />
+      <div style={{ display: "flex", gap: 20, marginTop: 16, maxWidth: "1400px", margin: "16px auto 0" }}>
+        {/* ✅ Live Activity feed */}
+        <div style={{ flex: "1 1 0", minWidth: 0, border: "1px solid #333", borderRadius: 14, padding: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, color: "#0a0a0a", flexShrink: 0 }}>Live Activity</div>
+          {feed.length === 0 ? (
+            <div style={{ opacity: 0.9 }}>No events yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", maxHeight: 200, wordBreak: "break-all" }}>
+              {feed.map((e) => (
+                <div key={e.t} style={{ fontFamily: "monospace", fontSize: 12, opacity: 1 }}>
+                  {new Date(e.t).toLocaleTimeString()} — {e.msg}{" "}
+                  {e.sig ? (
+                    <a
+                      href={explorerTx(e.sig)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ textDecoration: "underline" }}
+                    >
+                      {shortSig(e.sig)}
+                    </a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ✅ On-chain dashboard (live via websocket + refreshNonce fallback) */}
+        <div style={{ flex: "1 1 0", minWidth: 0 }}>
+          <UserDashboard refreshNonce={dashboardRefreshNonce} />
+        </div>
       </div>
-
-      <div style={{ marginTop: 16 }}>
-        <button
-          onClick={() => claimOnChain(false)}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-          }}
-        >
-          Claim on-chain (streak)
-        </button>
-
-        <button
-          onClick={() => claimOnChain(true)}
-          style={{
-            marginLeft: 10,
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-          }}
-        >
-          DEV Claim (unlimited)
-        </button>
-      </div>
-
-      {status && <pre style={{ marginTop: 16 }}>{status}</pre>}
-      {error && <pre style={{ marginTop: 16, color: "crimson" }}>{error}</pre>}
-
-      {/* ✅ Live Activity feed */}
-      <div style={{ marginTop: 16, border: "1px solid #333", borderRadius: 14, padding: 12 }}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Live Activity</div>
-        {feed.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>No events yet.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {feed.map((e) => (
-              <div key={e.t} style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.9 }}>
-                {new Date(e.t).toLocaleTimeString()} — {e.msg}{" "}
-                {e.sig ? (
-                  <a
-                    href={explorerTx(e.sig)}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ textDecoration: "underline" }}
-                  >
-                    {shortSig(e.sig)}
-                  </a>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ✅ On-chain dashboard (live via websocket + refreshNonce fallback) */}
-      <UserDashboard refreshNonce={dashboardRefreshNonce} />
 
       {receipt && (
         <div style={{ marginTop: 16 }}>
