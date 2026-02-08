@@ -15,7 +15,8 @@ import UserDashboard from "../components/UserDashboard";
 
 const WalletButton = dynamic(() => import("../components/WalletButton"), { ssr: false });
 
-const PROGRAM_ID = new PublicKey("45JnnKr8RUBcn6wXcGcHq2yyVNhKtZwZEB3mrXNeF1Vs");
+// ✅ IMPORTANT: update to your latest deployed program id
+const PROGRAM_ID = new PublicKey("BtJDtqG3Zy25gZC43H7q1TXTqjoeSh4JBHVYiWzwd2cb");
 const IX_SYSVAR = new PublicKey("Sysvar1nstructions1111111111111111111111111");
 const CLUSTER = "devnet";
 
@@ -98,7 +99,7 @@ async function buildInitUserIx(user: PublicKey, userStatePda: PublicKey) {
       { pubkey: userStatePda, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
-    data: disc, // ✅ correct: discriminator bytes (Uint8Array)
+    data: disc,
   });
 }
 
@@ -150,19 +151,15 @@ export default function Home() {
 
   // Live program logs (wow factor)
   useEffect(() => {
-    // Subscribe once per connection
     const subIdPromise = connection.onLogs(
       PROGRAM_ID,
       (logInfo) => {
         pushEvent("Program logs emitted", logInfo.signature);
-        // If you want to show the logs themselves, extend FeedEvent to include logs[]
       },
       "confirmed"
     );
 
     return () => {
-      // onLogs returns a number synchronously in current web3.js,
-      // but treat it safely in case it changes
       Promise.resolve(subIdPromise).then((subId: any) => {
         if (typeof subId === "number") connection.removeOnLogsListener(subId);
       });
@@ -173,7 +170,8 @@ export default function Home() {
   // If you proxied via Next API route, switch to fetch("/api/oracle-sign")
   const oracleUrl = useMemo(() => "http://127.0.0.1:8787", []);
 
-  async function claimOnChain() {
+  // ✅ isDev selects between claim_brush (streak) and claim_brush_dev (unlimited testing)
+  async function claimOnChain(isDev = false) {
     setError("");
     setStatus("");
     setReceipt(null);
@@ -183,7 +181,7 @@ export default function Home() {
       return;
     }
 
-    // --- 1) Build session request (dummy for now) ---
+    // --- 1) Build session request ---
     const now = Math.floor(Date.now() / 1000);
     const dayNum = Math.floor(now / 86400);
     const expiresAt = now + 120;
@@ -197,6 +195,8 @@ export default function Home() {
       sessionHash: bytesToHex(sessionHash),
       nonce: bytesToHex(nonce),
       expiresAt,
+      // optional: tell your oracle you want dev mode (if you want)
+      // mode: isDev ? "dev" : "prod",
     };
 
     // --- 2) Ask oracle to sign ---
@@ -243,7 +243,7 @@ export default function Home() {
     setReceipt({ request: reqBody, response: json });
     pushEvent("Oracle receipt verified locally ✅");
 
-    // --- 4) Derive PDAs (TextEncoder, no Buffer) ---
+    // --- 4) Derive PDAs ---
     const enc = new TextEncoder();
 
     const [userStatePda] = PublicKey.findProgramAddressSync(
@@ -268,9 +268,10 @@ export default function Home() {
       signature: sig,
     });
 
-    // --- 6) Build program instruction data for claim_brush ---
+    // --- 6) Build program instruction data for claim_brush / claim_brush_dev ---
     // Layout: disc[8] | day(i64 LE) | session_hash[32] | nonce[16] | expires_at(i64 LE) | sig[64]
-    const disc = await discriminator("claim_brush");
+    const disc = await discriminator(isDev ? "claim_brush_dev" : "claim_brush");
+
     const data = new Uint8Array(8 + 8 + 32 + 16 + 8 + 64);
     const view = new DataView(data.buffer);
 
@@ -302,7 +303,7 @@ export default function Home() {
         { pubkey: IX_SYSVAR, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data, // ✅ Uint8Array ok
+      data,
     });
 
     // --- 7) Build tx (init_user if needed), then ed25519 verify, then claim ---
@@ -361,7 +362,6 @@ export default function Home() {
     setStatus(`Confirmed ✅ ${sigTx}`);
     pushEvent("Confirmed ✅", sigTx);
 
-    // Keep this: it forces a refresh even if websocket is slow
     setDashboardRefreshNonce((n) => n + 1);
   }
 
@@ -378,7 +378,7 @@ export default function Home() {
 
       <div style={{ marginTop: 16 }}>
         <button
-          onClick={claimOnChain}
+          onClick={() => claimOnChain(false)}
           style={{
             padding: "10px 14px",
             borderRadius: 10,
@@ -386,7 +386,20 @@ export default function Home() {
             cursor: "pointer",
           }}
         >
-          Claim on-chain (Option C)
+          Claim on-chain (streak)
+        </button>
+
+        <button
+          onClick={() => claimOnChain(true)}
+          style={{
+            marginLeft: 10,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            cursor: "pointer",
+          }}
+        >
+          DEV Claim (unlimited)
         </button>
       </div>
 

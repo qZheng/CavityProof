@@ -1,9 +1,13 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
+use std::str::FromStr;
 
-declare_id!("PASTE_YOUR_PROGRAM_ID_HERE");
+// Well-known Ed25519 verify program id (stable across clusters)
+const ED25519_ID: &str = "Ed25519SigVerify111111111111111111111111111";
 
-// Hardcode your oracle pubkey (from the oracle server startup log)
+declare_id!("BtJDtqG3Zy25gZC43H7q1TXTqjoeSh4JBHVYiWzwd2cb");
+
+// Hardcode your oracle pubkey (must match oracle service)
 pub const ORACLE_PUBKEY: &str = "8yrUjTDd5pygozAQPob9nViMUUV1NT8in7BHCbe8HhGT";
 
 #[program]
@@ -19,8 +23,6 @@ pub mod cavityproof {
         Ok(())
     }
 
-    // payload_b64 and sig_b64 are passed as raw bytes by the client
-    // We'll verify on-chain by requiring an ed25519 verify instruction exists in the tx.
     pub fn claim_brush(
         ctx: Context<ClaimBrush>,
         day: i64,
@@ -38,19 +40,15 @@ pub mod cavityproof {
         require!(expires_at >= now, ErrorCode::Expired);
 
         // replay protection: Claim PDA must be newly created this tx
+        // (Anchor init already enforces "does not exist"; we store anyway for debugging/auditing)
         ctx.accounts.claim.user = ctx.accounts.user.key();
         ctx.accounts.claim.nonce = nonce;
         ctx.accounts.claim.day = day;
 
-        // Require the ed25519 verify instruction to be present in the transaction,
-        // verifying the oracle signature over the exact payload bytes.
-        let payload_bytes = build_payload_bytes(
-            ctx.accounts.user.key(),
-            day,
-            session_hash,
-            nonce,
-            expires_at,
-        );
+        // Require the ed25519 verify instruction in the same tx
+        let payload_bytes =
+            build_payload_bytes(ctx.accounts.user.key(), day, session_hash, nonce, expires_at);
+
         require_ed25519_ix(
             &ctx.accounts.ix_sysvar,
             &payload_bytes,
@@ -75,7 +73,50 @@ pub mod cavityproof {
         user_state.total_claims = user_state.total_claims.saturating_add(1);
 
         Ok(())
+        }
+        pub fn claim_brush_dev(
+        ctx: Context<ClaimBrushDev>,
+        day: i64,
+        session_hash: [u8; 32],
+        nonce: [u8; 16],
+        expires_at: i64,
+        sig: [u8; 64],
+    ) -> Result<()> {
+        // OPTIONAL: hard gate to your wallet so nobody abuses dev mode
+        // const DEV_WALLET: &str = "YOUR_WALLET_PUBKEY";
+        // require_keys_eq!(ctx.accounts.user.key(), Pubkey::from_str(DEV_WALLET).unwrap(), ErrorCode::DevOnly);
+
+        let user_state = &mut ctx.accounts.user_state;
+
+        require_keys_eq!(user_state.owner, ctx.accounts.user.key(), ErrorCode::BadOwner);
+
+        // Keep expiry (or skip if you prefer)
+        let now = Clock::get()?.unix_timestamp;
+        require!(expires_at >= now, ErrorCode::Expired);
+
+        // Replay protection: Claim PDA must be newly created this tx
+        ctx.accounts.claim.user = ctx.accounts.user.key();
+        ctx.accounts.claim.nonce = nonce;
+        ctx.accounts.claim.day = day;
+
+        // Require the ed25519 verify instruction in the same tx
+        let payload_bytes =
+            build_payload_bytes(ctx.accounts.user.key(), day, session_hash, nonce, expires_at);
+
+        require_ed25519_ix(
+            &ctx.accounts.ix_sysvar,
+            &payload_bytes,
+            &sig,
+            ORACLE_PUBKEY.parse::<Pubkey>().unwrap(),
+        )?;
+
+        // DEV behavior: allow unlimited submissions.
+        // Only increment total_claims (or even leave everything unchanged if you want)
+        user_state.total_claims = user_state.total_claims.saturating_add(1);
+
+        Ok(())
     }
+
 }
 
 fn build_payload_bytes(
@@ -85,7 +126,7 @@ fn build_payload_bytes(
     nonce: [u8; 16],
     expires_at: i64,
 ) -> Vec<u8> {
-    // Must match oracle: "CPv1" + user(32) + day(i64 LE) + sessionHash(32) + nonce(16) + expiresAt(i64 LE)
+    // "CPv1" + user(32) + day(i64 LE) + sessionHash(32) + nonce(16) + expiresAt(i64 LE)
     let mut out = Vec::with_capacity(4 + 32 + 8 + 32 + 16 + 8);
     out.extend_from_slice(b"CPv1");
     out.extend_from_slice(user.as_ref());
@@ -96,40 +137,34 @@ fn build_payload_bytes(
     out
 }
 
-/// Checks the instructions sysvar for an ed25519 verify instruction that verifies
-/// (oracle_pubkey, payload_bytes, sig).
+/// Scan the instructions sysvar for an Ed25519 verify instruction that includes:
+/// - oracle pubkey bytes
+/// - signature bytes
+/// - payload bytes
 ///
-/// This is the “Option C” enforcement.
+/// Hackathon version: "contains_subslice" checks.
+/// (Production: parse the ed25519 instruction layout and verify exact offsets.)
 fn require_ed25519_ix(
     ix_sysvar_account: &AccountInfo,
     payload: &[u8],
     sig: &[u8; 64],
     oracle_pubkey: Pubkey,
 ) -> Result<()> {
-    // Scan all instructions in this transaction
-    let num = ix_sysvar::load_num_instructions(ix_sysvar_account)
-        .map_err(|_| error!(ErrorCode::MissingEd25519Ix))?;
-
     let oracle_pk_bytes = oracle_pubkey.to_bytes();
+    let ed25519_pid = Pubkey::from_str(ED25519_ID).unwrap();
 
-    for i in 0..num {
-        let ix = ix_sysvar::load_instruction_at(i as usize, ix_sysvar_account)
-            .map_err(|_| error!(ErrorCode::MissingEd25519Ix))?;
+    // Loop a reasonable max; break when sysvar says "no instruction at index"
+    for i in 0..256usize {
+        let ix = match ix_sysvar::load_instruction_at_checked(i, ix_sysvar_account) {
+            Ok(ix) => ix,
+            Err(_) => break,
+        };
 
-        // Ed25519 program id:
-        // Ed25519SigVerify111111111111111111111111111
-        if ix.program_id != anchor_lang::solana_program::ed25519_program::id() {
+        // Must be the Ed25519 SigVerify program
+        if ix.program_id != ed25519_pid {
             continue;
         }
 
-        // Very pragmatic check:
-        // We confirm this instruction’s data contains:
-        // - oracle pubkey bytes
-        // - signature bytes
-        // - payload bytes
-        //
-        // This is sufficient for hackathon-grade enforcement.
-        // (More strict parsing can be added later.)
         let data = ix.data;
 
         if contains_subslice(&data, &oracle_pk_bytes)
@@ -144,9 +179,13 @@ fn require_ed25519_ix(
 }
 
 fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 #[derive(Accounts)]
@@ -167,6 +206,7 @@ pub struct InitUser<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(day: i64, session_hash: [u8; 32], nonce: [u8; 16], expires_at: i64, sig: [u8; 64])]
 pub struct ClaimBrush<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
@@ -188,12 +228,42 @@ pub struct ClaimBrush<'info> {
     )]
     pub claim: Account<'info, Claim>,
 
-    /// CHECK: instructions sysvar (read-only)
+    /// CHECK: Instructions sysvar
     #[account(address = ix_sysvar::ID)]
     pub ix_sysvar: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+#[instruction(day: i64, session_hash: [u8; 32], nonce: [u8; 16], expires_at: i64, sig: [u8; 64])]
+pub struct ClaimBrushDev<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"user", user.key().as_ref()],
+        bump
+    )]
+    pub user_state: Account<'info, UserState>,
+
+    #[account(
+        init,
+        payer = user,
+        space = 8 + Claim::SIZE,
+        seeds = [b"claim", user.key().as_ref(), &nonce],
+        bump
+    )]
+    pub claim: Account<'info, Claim>,
+
+    /// CHECK: Instructions sysvar
+    #[account(address = ix_sysvar::ID)]
+    pub ix_sysvar: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
 
 #[account]
 pub struct UserState {
@@ -203,7 +273,7 @@ pub struct UserState {
     pub total_claims: u32,
 }
 impl UserState {
-    pub const SIZE: usize = 32 + 4 + 8 + 4;
+    pub const SIZE: usize = 32 + 4 + 8 + 4; // 48 bytes (account size = 8 + 48 = 56)
 }
 
 #[account]
@@ -213,7 +283,7 @@ pub struct Claim {
     pub day: i64,
 }
 impl Claim {
-    pub const SIZE: usize = 32 + 16 + 8;
+    pub const SIZE: usize = 32 + 16 + 8; // 56 bytes (account size = 8 + 56 = 64)
 }
 
 #[error_code]

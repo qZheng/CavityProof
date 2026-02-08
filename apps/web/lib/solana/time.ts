@@ -17,3 +17,17 @@ export function formatHMS(totalSeconds: number): string {
   const ss = s % 60;
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 }
+
+export function formatUnixDay(unixDay: bigint): string {
+  if (unixDay === BigInt(-1)) {
+    return "Never";
+  }
+  // Convert Unix day to Unix timestamp (seconds)
+  const unixSeconds = Number(unixDay) * 86400;
+  const date = new Date(unixSeconds * 1000);
+  return date.toLocaleDateString("en-US", { 
+    year: "numeric", 
+    month: "short", 
+    day: "numeric" 
+  });
+}

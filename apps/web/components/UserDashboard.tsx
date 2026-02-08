@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { getUserStatePda } from "../lib/solana/pdas";
-import { formatHMS, secondsUntilNextUnixDay, unixDayNow } from "../lib/solana/time";
+import { formatHMS, formatUnixDay, secondsUntilNextUnixDay, unixDayNow } from "../lib/solana/time";
 
 type UserStateVM = {
   wallet: string;
@@ -150,7 +150,7 @@ export default function UserDashboard({ refreshNonce }: { refreshNonce: number }
             exists: false,
             streak: 0,
             totalClaims: 0,
-            lastDayClaimed: -1n,
+            lastDayClaimed: BigInt(-1),
             claimedToday: false,
             nextClaimInSec: secondsUntilNextUnixDay(),
           });
@@ -254,7 +254,7 @@ export default function UserDashboard({ refreshNonce }: { refreshNonce: number }
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 14 }}>
                 <Stat label="Streak" value={vm.streak} />
                 <Stat label="Total Claims" value={vm.totalClaims} />
-                <Stat label="Last Day Claimed" value={vm.lastDayClaimed.toString()} />
+                <Stat label="Last Day Claimed" value={formatUnixDay(vm.lastDayClaimed)} />
                 <Stat
                   label="Claimed Today?"
                   value={

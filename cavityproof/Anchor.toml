@@ -5,8 +5,8 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-cavityproof = "45JnnKr8RUBcn6wXcGcHq2yyVNhKtZwZEB3mrXNeF1Vs"
+[programs.devnet]
+cavityproof = "BtJDtqG3Zy25gZC43H7q1TXTqjoeSh4JBHVYiWzwd2cb"
 
 [registry]
 url = "https://api.apr.dev"
