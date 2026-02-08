@@ -1,0 +1,161 @@
+#################################
+# OS
+#################################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+#################################
+# Node / Next.js
+#################################
+node_modules/
+.next/
+out/
+dist/
+build/
+.cache/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# environment files (VERY IMPORTANT)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+#################################
+# Python
+#################################
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtual environments
+venv/
+.venv/
+env/
+ENV/
+yoloenv/
+pythonenv/
+
+# Python packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# pytest / mypy / tooling
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.coverage
+htmlcov/
+
+#################################
+# OpenCV / YOLO / ML artifacts
+#################################
+
+# Ultralytics auto-downloads models here
+runs/
+weights/
+datasets/
+*.pt
+*.onnx
+*.engine
+*.tflite
+*.pb
+
+# captured frames / debug images
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.avi
+*.mp4
+*.mov
+
+# logs
+output.txt
+*.log
+
+#################################
+# Solana / Anchor (CRITICAL)
+#################################
+
+# keypairs (NEVER COMMIT THESE)
+*.json
+!package.json
+!tsconfig.json
+!anchor.json
+
+# Anchor & Solana build
+target/
+dist/
+.cache/
+test-ledger/
+.deploy/
+.anchor/
+anchor-wallet/
+.solana/
+.solana-keypair.json
+id.json
+keypair.json
+
+#################################
+# Wallets / Secrets
+#################################
+wallet.json
+wallet-keypair.json
+private-key.json
+secret.json
+*.pem
+*.key
+
+#################################
+# Editors / IDE
+#################################
+.vscode/
+.idea/
+*.swp
+*.swo
+
+#################################
+# Misc
+#################################
+*.bak
+*.tmp
+*.pid
+
+# Python virtual environments (ALL common names)
+.venv/
+venv/
+env/
+ENV/
+yoloenv/
+pythonenv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# If you somehow created a venv without dot prefix
+.venv*/
+venv*/
