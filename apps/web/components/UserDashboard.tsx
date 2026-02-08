@@ -214,7 +214,7 @@ export default function UserDashboard({ refreshNonce }: { refreshNonce: number }
     <div style={{ border: "1px solid #333", borderRadius: 14, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>Your CavityProof Account</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>Your BrushBuddy Account</div>
           <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
             Wallet: <span style={{ fontFamily: "monospace" }}>{shortPk(userPk.toBase58())}</span>
           </div>

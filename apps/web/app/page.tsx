@@ -502,10 +502,10 @@ export default function Home() {
     <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui", color: "#0a0a0a" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
         <img src={logo.src} alt="CavityProof" style={{ width: 80, height: 80, borderRadius: 12 }} />
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0a0a0a" }}>CavityProof</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0a0a0a" }}>BrushBuddy</h1>
       </div>
       <p style={{ marginTop: 8, opacity: 0.9, textAlign: "center" }}>
-        Phase 4: Oracle-enforced claim (ed25519 verify + nonce replay protection)
+        Oracle-enforced claim (ed25519 verify + nonce replay protection) for proof of hygiene.
       </p>
 
       <div style={{ maxWidth: "1400px", margin: "16px auto 0", border: "1px solid #333", borderRadius: 14, padding: 12 }}>
@@ -580,7 +580,8 @@ export default function Home() {
                 </b>
               </div>
               <div style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.95 }}>
-                conf: {cv.confidence.toFixed(2)} | grace: {cv.grace_sec}s
+                  conf: {Number.isFinite(cv?.confidence) ? cv.confidence.toFixed(2) : "—"} | grace: {Number.isFinite(cv?.grace_sec) ? cv.grace_sec : 0}s
+
               </div>
             </div>
 
