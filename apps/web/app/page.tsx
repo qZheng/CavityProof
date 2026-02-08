@@ -503,6 +503,21 @@ export default function Home() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
         <img src={logo.src} alt="CavityProof" style={{ width: 80, height: 80, borderRadius: 12 }} />
         <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0a0a0a" }}>BrushBuddy</h1>
+        <a
+          href="/verify"
+          style={{
+            marginLeft: 16,
+            padding: "8px 14px",
+            borderRadius: 10,
+            border: "1px solid #333",
+            color: "#0a0a0a",
+            textDecoration: "none",
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          Hash authentication
+        </a>
       </div>
       <p style={{ marginTop: 8, opacity: 0.9, textAlign: "center" }}>
         Oracle-enforced claim (ed25519 verify + nonce replay protection) for proof of hygiene.
